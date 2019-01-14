@@ -1,7 +1,7 @@
 from nes_py.wrappers import BinarySpaceToDiscreteSpaceEnv
 import gym_super_mario_bros
 from gym_super_mario_bros.actions import SIMPLE_MOVEMENT
-env = gym_super_mario_bros.make('SuperMarioBros-v0')
+env = gym_super_mario_bros.make('SuperMarioBros-v1')
 env = BinarySpaceToDiscreteSpaceEnv(env, SIMPLE_MOVEMENT)
 import torch
 import torch.nn as nn
@@ -65,7 +65,7 @@ class DQN(nn.Module):
         convw = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
         convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
         linear_input_size = convw * convh * 32
-        self.head = nn.Linear(linear_input_size, 7) # 448 or 512
+        self.head = nn.Linear(linear_input_size, 6  ) # 128
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -76,12 +76,12 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 
-BATCH_SIZE = 128
-GAMMA = 0.999
+BATCH_SIZE = 16
+GAMMA = 0.01
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
-TARGET_UPDATE = 10
+TARGET_UPDATE = 5
 
 # Get screen size so that we can initialize layers correctly based on shape
 # returned from AI gym. Typical dimensions at this point are close to 3x40x90
@@ -97,21 +97,26 @@ target_net.load_state_dict(policy_net.state_dict())
 target_net.eval()
 
 optimizer = optim.RMSprop(policy_net.parameters())
-memory = ReplayMemory(10000)
+memory = ReplayMemory(2000)
 
 steps_done = 0
-
-def select_action(state):
-    global steps_done
+steps_list={}
+def select_action(state,x):
+    global steps_list
+    if x in steps_list:
+        steps_done=steps_list[x]
+    else:
+        steps_list[x]=0
+        steps_done=0
     sample = random.random()
     eps_threshold = EPS_END + (EPS_START - EPS_END) * \
                     math.exp(-1. * steps_done / EPS_DECAY)
-    steps_done += 1
+    steps_list[x]+=1
     if sample > eps_threshold:
         with torch.no_grad():
             return policy_net(state).max(1)[1].view(1, 1)
     else:
-        return torch.tensor([[random.randrange(7)]], device=device, dtype=torch.long)
+        return torch.tensor([[random.randrange(6)]], device=device, dtype=torch.long) #128?
 
 
 episode_durations = []
@@ -195,28 +200,52 @@ def get_screen():
 #reward needs to self design
 
 
-num_episodes=50
+num_episodes=5000
 for i_episode in range(num_episodes):
     # Initialize the environment and state
-    picture=env.reset()
+    if (i_episode==4999):
+        print("last eposide")
+    env.reset()
+    picture, _, _, last_info=env.step(0)
     last_screen = get_screen()
     current_screen = get_screen()
-    state = current_screen - last_screen
+    state = current_screen
     for t in count():
-        action=select_action(state)
+        action=select_action(state,last_info['x_pos'])
         picture, reward, done, info = env.step(action.item())
+
+        if info['flag_get']==True:
+            reward=99999
+        elif reward<0 and reward!=15:
+            pass
+        elif (reward==-15) or (info['time']<20): #dead
+            reward= -99999
+        else:
+            # reward=info['x_pos']+info['coins']*10+info['score']+info['time']*2
+            # if info['status']=='tall':
+            #     reward=reward*2
+            # elif info['status']=='fileball':
+            #     reward=reward*4
+            if last_info["coins"]!=info['coins']:
+                reward+=5
+            if info['status']!=last_info["status"]:
+                if info["status"]=='small':
+                    reward-=10
+                else:
+                    reward+=10
         reward = torch.tensor([reward], device=device, dtype=torch.float)
         # Observe new state
         last_screen = current_screen
         current_screen = get_screen()
         if not done:
-            next_state = current_screen - last_screen
+            next_state = current_screen
         else:
             next_state = None
         # Store the transition in memory
         memory.push(state, action, next_state, reward)
 
         optimize_model()
+        last_info=info
         if done:
             #episode_durations.append(t + 1)
             #plot_durations()
