@@ -82,7 +82,7 @@ class DQN(nn.Module):
 
 
 BATCH_SIZE = 16
-GAMMA = 0.01
+GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
@@ -211,7 +211,7 @@ for i_episode in range(num_episodes):
     # Initialize the environment and state
     if (i_episode==4999):
         print("last eposide")
-    if (i_episode%10==0):
+    if (i_episode%200==0):
         env = wp.Monitor(env, expt_dir, force=True)
     env.reset()
     picture, _, _, last_info=env.step(0)
