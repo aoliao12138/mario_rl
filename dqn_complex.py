@@ -17,6 +17,9 @@ import matplotlib.pyplot as plt
 from collections import namedtuple
 from itertools import count
 from PIL import Image
+import gym
+from gym import wrappers as wp
+
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -26,6 +29,8 @@ Transition = namedtuple('Transition',
 resize = T.Compose([T.ToPILImage(),
                     #T.Resize(40, interpolation=Image.CUBIC),
                     T.ToTensor()])
+
+
 
 class ReplayMemory(object):
 
@@ -65,7 +70,7 @@ class DQN(nn.Module):
         convw = conv2d_size_out(conv2d_size_out(conv2d_size_out(w)))
         convh = conv2d_size_out(conv2d_size_out(conv2d_size_out(h)))
         linear_input_size = convw * convh * 32
-        self.head = nn.Linear(linear_input_size, 12) # 128
+        self.head = nn.Linear(linear_input_size, 12 ) # 128
 
     # Called with either one element to determine next action, or a batch
     # during optimization. Returns tensor([[left0exp,right0exp]...]).
@@ -76,8 +81,8 @@ class DQN(nn.Module):
         return self.head(x.view(x.size(0), -1))
 
 
-BATCH_SIZE = 16
-GAMMA = 0.01
+BATCH_SIZE = 128
+GAMMA = 0.99
 EPS_START = 0.9
 EPS_END = 0.05
 EPS_DECAY = 200
@@ -202,9 +207,12 @@ def get_screen():
 
 num_episodes=5000
 for i_episode in range(num_episodes):
+    expt_dir = './video/mario'+str(i_episode)
     # Initialize the environment and state
     if (i_episode==4999):
         print("last eposide")
+    if (i_episode%200==0):
+        env = wp.Monitor(env, expt_dir, force=True)
     env.reset()
     picture, _, _, last_info=env.step(0)
     last_screen = get_screen()
